@@ -30,11 +30,16 @@
             <q-tooltip :delay="500">{{ item.title }}</q-tooltip>
           </div>
 
-          <div class="text-center text-weight-bold ellipsis">
-            <q-btn v-if="sourceUrl" flat dense no-caps :href="sourceUrl" target="_blank" rel="noopener noreferrer" @click.stop>
-              {{ providerName }}
+          <div class="text-weight-bold" style="display: flex; align-items: center; justify-content: center; gap: 4px">
+            <q-btn v-if="sourceUrl" flat dense no-caps style="min-width: 0" :href="sourceUrl" target="_blank" rel="noopener noreferrer" @click.stop>
+              <span class="ellipsis">{{ providerName }}</span>
             </q-btn>
-            <span v-else>{{ providerName }}</span>
+            <span v-else class="ellipsis">{{ providerName }}</span>
+            <q-btn v-if="allowLinkAdd" flat dense icon="mdi-plus" style="flex-shrink: 0"
+                   aria-label="Add link only" :loading="addingLink" :disable="disabled || !sourceUrl"
+                   @click.stop="emit('on-add-link', item)">
+              <q-tooltip>Add link only</q-tooltip>
+            </q-btn>
           </div>
         </q-card-section>
       </div>
@@ -49,7 +54,7 @@ import type { PropType } from 'vue'
 import { computed } from 'vue'
 import { getSourceUrl } from '@/providerLinks'
 
-const emit = defineEmits(['on-select-result'])
+const emit = defineEmits(['on-select-result', 'on-add-link'])
 const props = defineProps({
     item: {
         type: Object as PropType<SearchResult>,
@@ -59,6 +64,9 @@ const props = defineProps({
         type: Boolean,
         required: true
     },
+    allowLinkAdd: Boolean,
+    addingLink: Boolean,
+    disabled: Boolean,
     width: {
         type: [String],
         required: false,

@@ -2,10 +2,10 @@
 
 Adds komf integration to Komga and Kavita ui.
 
-### Fork additions (0.13.9)
+### Fork additions (0.13.9 / 0.13.10)
 
 - Provider names open the search result's source URL in a new tab without changing card selection. Missing/non-web URLs stay plain text.
-- Select a result, then use **Add link only** to append its URL to Komga without Identify. The dialog stays open for further additions. Identical URLs are skipped.
+- Click the **+** button next to a candidate's Provider name (**Add link only**) to append that candidate's URL to Komga without selecting it or invoking Identify. The dialog stays open and the current selection is unchanged. Identical URLs are skipped.
 - Ordinary series update series links; One-shots update their single book's links. Each action reads current links and PATCHes only `links`, preserving other metadata and lock flags.
 - This uses the current Komga page session and requires an administrator account. It does not use or send the Komf auth key. Kavita is not supported for link-only writes.
 - Restore the original button spinners by allowing their two animations inside Identify only. Remove the extra waiting text/progress bar; keep empty-result, error and job-completion feedback. Dialog positioning animations remain disabled.

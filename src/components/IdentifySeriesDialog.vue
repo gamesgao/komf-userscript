@@ -102,9 +102,7 @@
           </q-toolbar>
 
           <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search again</q-btn>
-          <q-btn v-if="settings.mediaServer === MediaServer.Komga" flat color="secondary"
-                 :loading="addingLink" :disable="!selected || !selectedSourceUrl || loading || !!jobId"
-                 @click="addLinkOnly">Add link only</q-btn>
+
           <div v-if="searchResults.length === 0" class="q-pa-md" role="status">
             No matches found. Try another title or check the enabled providers.
           </div>
@@ -114,7 +112,10 @@
                  v-for="(item, index) in searchResults"
                  :key="index"
             >
-              <identify-card :item="item" :selected="isResultSelected(item)" @on-select-result="selectResult" />
+              <identify-card :item="item" :selected="isResultSelected(item)"
+                             :allow-link-add="settings.mediaServer === MediaServer.Komga"
+                             :adding-link="addingLink === item" :disabled="loading || !!jobId"
+                             @on-select-result="selectResult" @on-add-link="addLinkOnly" />
             </div>
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm" v-if="results">
@@ -177,7 +178,7 @@ const cardStyle = computed(() => {
 const search = ref(true)
 const results = ref(false)
 const loading = ref(false)
-const addingLink = ref(false)
+const addingLink = ref<SearchResult | null>(null)
 const errorMessage = ref('')
 const initialized = ref(false)
 const linksMatchEnabled = ref(false)
@@ -189,7 +190,7 @@ let disposed = false
 onBeforeUnmount(() => { disposed = true })
 const searchResults = ref<SearchResult[]>([])
 const selectedResult = ref<SearchResult>({} as SearchResult)
-const selectedSourceUrl = computed(() => getSourceUrl(selectedResult.value.url))
+
 const linkHits = ref<{ provider: string, providerSeriesId: string, label: string, url: string }[]>([])
 const selectedLink = ref<{ provider: string, providerSeriesId: string, label: string, url: string } | null>(null)
 const aggregateMode = ref(false)
@@ -303,21 +304,22 @@ function startSearch() {
     errorMessage.value = ''
 }
 
-async function addLinkOnly() {
-    if (loading.value || jobId.value || !selectedSourceUrl.value || !seriesId.value) return
+async function addLinkOnly(item: SearchResult) {
+    const url = getSourceUrl(item.url)
+    if (loading.value || jobId.value || !url || !seriesId.value) return
     loading.value = true
-    addingLink.value = true
+    addingLink.value = item
     errorMessage.value = ''
     try {
         const added = await addSeriesLink(seriesId.value, {
-            label: selectedResult.value.provider,
-            url: selectedSourceUrl.value
+            label: item.provider,
+            url
         })
         $q.notify({ message: added ? 'Link added to Komga' : 'Link already exists in Komga', color: 'positive', timeout: 3000 })
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : String(e)
     } finally {
-        addingLink.value = false
+        addingLink.value = null
         loading.value = false
     }
 }
