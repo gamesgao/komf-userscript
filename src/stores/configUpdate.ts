@@ -332,8 +332,7 @@ export const useConfigUpdateStore = defineStore('settingsUpdate', () => {
         model.alternateTitleLabels = dto.postProcessing.alternateTitleLabels ?? { romaji: null, native: null, localized: null }
         model.linksSkipEnabled = dto.postProcessing.linksSkipEnabled ?? true
         model.linksMatchEnabled = dto.postProcessing.linksMatchEnabled ?? true
-        settings.linksSkipEnabled = model.linksSkipEnabled
-        settings.linksMatchEnabled = model.linksMatchEnabled
+
         model.alternativeTitles = dto.postProcessing.alternativeSeriesTitles
         model.alternativeTitleLanguages = dto.postProcessing.alternativeSeriesTitleLanguages
         model.searchTitleExtraction = dto.searchTitleExtraction ?? defaultSearchTitleExtraction()

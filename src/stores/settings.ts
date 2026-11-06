@@ -9,7 +9,5 @@ export const useSettingsStore = defineStore('settings', () => {
     // 脚本通过 `Authorization: Bearer <base64(密钥)>` 头携带。
     const komfAuthKey = useStorage('komf-auth-key', '')
     const mediaServer: Ref<MediaServer | undefined> = ref()
-    const linksMatchEnabled = ref(true)
-    const linksSkipEnabled = ref(true)
-    return { komfUrl, komfAuthKey, mediaServer, linksMatchEnabled, linksSkipEnabled }
+    return { komfUrl, komfAuthKey, mediaServer }
 })

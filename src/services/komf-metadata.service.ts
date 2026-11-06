@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance } from 'axios'
-import type { IdentifyRequest, SearchResult } from '@/types/metadata'
+import type { IdentifyRequest, MetadataJob, SearchResult } from '@/types/metadata'
 import { useSettingsStore } from '@/stores/settings'
 import MediaServer from '@/types/mediaServer'
 
@@ -23,20 +23,38 @@ export default class KomfMetadataService {
             let msg = 'Failed to retrieve search results'
 
             if (axios.isAxiosError(e)) {
-                msg += `: ${e.message}`
+                msg += `: ${e.response?.data?.message ?? e.message}`
             }
             throw new Error(msg)
         }
     }
 
-    async identifySeries(request: IdentifyRequest) {
+    async identifySeries(request: IdentifyRequest): Promise<string> {
+        let data
         try {
-            await this.http.post(`${this.settings.komfUrl}/${this.settings.mediaServer}/identify`, request)
+            data = (await this.http.post(
+                `${this.settings.komfUrl}/api/${this.settings.mediaServer}/metadata/identify`, request
+            )).data
         } catch (e) {
             let msg = 'Failed to identify series'
             if (axios.isAxiosError(e)) {
-                msg += `: ${e.message}`
+                msg += `: ${e.response?.data?.message ?? e.message}`
             }
+            throw new Error(msg)
+        }
+        const jobId = data?.id ?? data?.jobId
+        if (!jobId) throw new Error('Identify returned no job ID. Check job history before retrying.')
+        return jobId
+    }
+
+    async getJob(jobId: string): Promise<MetadataJob> {
+        try {
+            return (await this.http.get(`${this.settings.komfUrl}/api/jobs/${encodeURIComponent(jobId)}`, {
+                timeout: 10000
+            })).data
+        } catch (e) {
+            let msg = 'Failed to check Identify status'
+            if (axios.isAxiosError(e)) msg += `: ${e.response?.data?.message ?? e.message}`
             throw new Error(msg)
         }
     }

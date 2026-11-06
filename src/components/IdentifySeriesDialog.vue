@@ -10,44 +10,56 @@
           Identify
         </div>
 
+        <div v-if="loading" class="q-pb-md" role="status" aria-live="polite">
+          <div class="q-pb-sm">{{ loadingMessage }}</div>
+          <q-linear-progress indeterminate color="secondary" />
+        </div>
+        <div v-if="errorMessage" class="text-negative q-pb-md" role="alert">{{ errorMessage }}</div>
+        <div v-if="jobId" class="text-caption q-pb-md">Task {{ jobId }}. Closing this dialog does not cancel the server task.</div>
+
         <q-card flat v-if="search">
 
           <q-toolbar class="lt-sm" id="identify_toolbar">
-            <q-btn flat icon="mdi-close" @click="onDialogCancel" />
+            <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel" />
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :loading="loading" :disable="loading || form.title === ''" @click="searchSeries">
-              Search
+            <q-btn color="secondary" :disable="loading || form.title === ''" @click="searchSeries">
+              {{ loading ? 'Please wait…' : 'Search' }}
             </q-btn>
           </q-toolbar>
 
 
           <div class="col">
-            <q-input class="q-pt-sm q-pb-sm" v-model="form.title" label="title" filled />
-            <q-input class="q-pt-sm q-pb-sm" v-model="form.edition" label="edition" filled />
+            <q-input class="q-pt-sm q-pb-sm" v-model="form.title" label="title" :disable="loading" filled />
+
+            <div v-if="linksMatchEnabled && linkHits.length" class="text-caption q-pt-sm">
+              Komf still prioritizes existing links. Disable linksMatchEnabled in Processing settings to force a new match.
+            </div>
           </div>
 
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm">
-            <q-btn :disable="loading" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn :loading="loading" :disable="loading || form.title === ''" color="secondary" @click="searchSeries">
-              Search
+            <q-btn :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
+            <q-btn :disable="loading || form.title === ''" color="secondary" @click="searchSeries">
+              {{ loading ? 'Please wait…' : 'Search' }}
             </q-btn>
           </q-card-actions>
         </q-card>
 
-        <q-card flat v-if="!search && linkHits.length > 0">
+        <q-card flat v-if="!search && !results && linkHits.length > 0">
           <q-toolbar class="lt-sm">
-            <q-btn flat icon="mdi-close" @click="onDialogCancel" />
+            <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel" />
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" @click="dialogConfirm">Confirm</q-btn>
+            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-toolbar>
           <div class="q-pa-md">
+            <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search by title</q-btn>
             <div class="text-body2 q-pb-sm">Choose a series link:</div>
             <q-list bordered separator>
               <q-item
-                v-if="linkHits.length > 1"
+                v-if="linkHits.length > 1 && aggregateEnabled"
                 clickable
+                :disable="loading || !!jobId"
                 :active="aggregateMode"
                 @click="aggregateMode = true; selectedLink = null"
               >
@@ -56,13 +68,14 @@
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>Aggregate all providers</q-item-label>
-                  <q-item-label caption>Merge metadata from all {{ linkHits.length }} provider links</q-item-label>
+                  <q-item-label caption>Use the server's aggregation settings for these provider links</q-item-label>
                 </q-item-section>
               </q-item>
               <q-item
                 v-for="(hit, i) in linkHits"
                 :key="i"
                 clickable
+                :disable="loading || !!jobId"
                 :active="!aggregateMode && selectedLink === hit"
                 @click="aggregateMode = false; selectedLink = hit"
               >
@@ -77,21 +90,25 @@
             </q-list>
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm">
-            <q-btn :disable="loading" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn :loading="loading" color="secondary" :disable="!selectedLink && !aggregateMode" @click="dialogConfirm">Confirm</q-btn>
+            <q-btn :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
+            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-card-actions>
         </q-card>
 
         <q-card flat v-if="results">
 
           <q-toolbar class="lt-sm">
-            <q-btn flat icon="mdi-close" @click="onDialogCancel">
+            <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel">
             </q-btn>
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="!selected" @click="dialogConfirm">Confirm</q-btn>
+            <q-btn color="secondary" :disable="!selected || loading" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-toolbar>
 
+          <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search again</q-btn>
+          <div v-if="searchResults.length === 0" class="q-pa-md" role="status">
+            No matches found. Try another title or check the enabled providers.
+          </div>
           <div class="row">
             <div class="col-auto"
                  style="padding: 16px 16px 16px 16px;"
@@ -102,9 +119,8 @@
             </div>
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm" v-if="results">
-            <q-btn flat :disable="loading" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn color="secondary" :disable="!selected || loading" :loading="loading" @click="dialogConfirm">Confirm
-            </q-btn>
+            <q-btn flat :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
+            <q-btn color="secondary" :disable="!selected || loading" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-card-actions>
         </q-card>
       </q-card-section>
@@ -113,15 +129,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, reactive, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, reactive, ref } from 'vue'
 import type { IdentifyRequest, SearchResult } from '@/types/metadata'
 import IdentifyCard from '@/components/IdentifyCard.vue'
 import type KomfMetadataService from '../services/komf-metadata.service'
-import { komfMetadataKey } from '@/injection-keys'
+import { komfConfigKey, komfMetadataKey } from '@/injection-keys'
 import { useSettingsStore } from '@/stores/settings'
 import { useDialogPluginComponent, useQuasar } from 'quasar'
-import { errorNotification } from '@/errorNotification'
 import MediaServer from '@/types/mediaServer'
+import { parseProviderLink } from '@/providerLinks'
 
 defineEmits([
     ...useDialogPluginComponent.emits
@@ -131,6 +147,7 @@ const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginC
 const metadataService = inject<KomfMetadataService>(
     komfMetadataKey
 ) as KomfMetadataService
+const configService = inject(komfConfigKey)!
 
 const props = defineProps({
     seriesTitle: {
@@ -160,10 +177,17 @@ const cardStyle = computed(() => {
 const search = ref(true)
 const results = ref(false)
 const loading = ref(false)
+const loadingMessage = ref('')
+const errorMessage = ref('')
+const initialized = ref(false)
+const linksMatchEnabled = ref(false)
+const aggregateEnabled = ref(false)
 const selected = ref(false)
-const form = reactive({ title: props.seriesTitle ?? '', edition: '' })
-const edition = ref('')
-const searchResults = ref<SearchResult[]>()
+const form = reactive({ title: props.seriesTitle ?? '' })
+const jobId = ref<string | null>(null)
+let disposed = false
+onBeforeUnmount(() => { disposed = true })
+const searchResults = ref<SearchResult[]>([])
 const selectedResult = ref<SearchResult>({} as SearchResult)
 const linkHits = ref<{ provider: string, providerSeriesId: string, label: string, url: string }[]>([])
 const selectedLink = ref<{ provider: string, providerSeriesId: string, label: string, url: string } | null>(null)
@@ -173,7 +197,6 @@ const seriesId = computed(() => {
     let path = window.location.pathname.split('/')
     return path[path.findIndex(el => el == 'series' || el == 'oneshot') + 1]
 })
-const isOneshot = computed(() => window.location.pathname.split('/').includes('oneshot'))
 
 const libraryId = ref<string | undefined>()
 
@@ -202,53 +225,103 @@ async function resolveLibraryId() {
     }
 }
 
-resolveLibraryId()
+async function initialize() {
+    loading.value = true
+    loadingMessage.value = 'Loading settings…'
+    errorMessage.value = ''
+    try {
+        await resolveLibraryId()
+        const config = await configService.getConfig()
+        const update = settings.mediaServer === MediaServer.Kavita
+            ? config.kavita.metadataUpdate : config.komga.metadataUpdate
+        const processing = (libraryId.value && update.library[libraryId.value]) || update.default
+        linksMatchEnabled.value = processing.postProcessing.linksMatchEnabled ?? true
+        aggregateEnabled.value = processing.aggregate
+        await fetchProviderLink()
+        initialized.value = true
+    } catch (e) {
+        errorMessage.value = e instanceof Error ? e.message : String(e)
+    } finally {
+        loading.value = false
+    }
+}
 
 async function dialogConfirm() {
+    if (loading.value) return
     loading.value = true
-    await editMetadata()
-    onDialogOK()
+    loadingMessage.value = 'Updating metadata… Waiting for Komf to finish.'
+    errorMessage.value = ''
+    try {
+        if (!jobId.value) jobId.value = await editMetadata()
+        const deadline = Date.now() + 5 * 60 * 1000
+        while (!disposed && Date.now() < deadline) {
+            const job = await metadataService.getJob(jobId.value)
+            if (disposed) return
+            if (job.status === 'COMPLETED') {
+                $q.notify({ message: 'Metadata updated', color: 'positive', timeout: 3000 })
+                onDialogOK()
+                return
+            }
+            if (job.status === 'FAILED') {
+                jobId.value = null
+                throw new Error(job.message || 'Identify failed')
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+        if (!disposed) throw new Error('Task is still running. Check status again; no new task will be submitted.')
+    } catch (e) {
+        errorMessage.value = e instanceof Error ? e.message : String(e)
+    } finally {
+        loading.value = false
+    }
 }
 
 async function searchSeries() {
+    if (loading.value) return
+    if (!initialized.value) {
+        await initialize()
+        if (!initialized.value) return
+    }
     loading.value = true
+    loadingMessage.value = 'Searching providers… This may take a moment.'
+    errorMessage.value = ''
     try {
         searchResults.value = await metadataService.searchSeries(form.title, libraryId.value, seriesId.value)
+        selected.value = false
+        results.value = true
+        search.value = false
+
     } catch (e) {
-        errorNotification(e, $q)
-        onDialogCancel()
-        return
+        errorMessage.value = e instanceof Error ? e.message : String(e)
+    } finally {
+        loading.value = false
     }
-    results.value = true
-    search.value = false
-    loading.value = false
-    edition.value = form.edition
+}
+
+function startSearch() {
+    search.value = true
+    results.value = false
+    selected.value = false
+    errorMessage.value = ''
 }
 
 async function editMetadata() {
-    if (seriesId.value) {
-        // aggregateMode 时服务端自动用所有 links（受 aggregateMetadata 控制），
-        // 这里传第一个命中作为 fallback provider
-        const info = aggregateMode.value ? linkHits.value[0] : selectedLink.value
-        const request: IdentifyRequest = {
-            libraryId: libraryId.value,
-            seriesId: seriesId.value,
-            provider: info ? info.provider : selectedResult.value.provider,
-            providerSeriesId: info ? info.providerSeriesId : selectedResult.value.resultId,
-            edition: edition.value == '' ? undefined : edition.value
-        }
-
-        try {
-            await metadataService.identifySeries(request)
-        } catch (e) {
-            errorNotification(e, $q)
-            onDialogCancel()
-            return
-        }
+    if (!seriesId.value) throw new Error('Could not resolve series id')
+    // aggregateMode 时服务端自动用所有 links（受 aggregateMetadata 控制），
+    // 这里传第一个命中作为 fallback provider
+    const info = results.value ? null : aggregateMode.value ? linkHits.value[0] : selectedLink.value
+    const request: IdentifyRequest = {
+        libraryId: libraryId.value,
+        seriesId: seriesId.value,
+        provider: info ? info.provider : selectedResult.value.provider,
+        providerSeriesId: info ? info.providerSeriesId : selectedResult.value.resultId
     }
+
+    return metadataService.identifySeries(request)
 }
 
 function selectResult(searchResult: SearchResult) {
+    if (loading.value || jobId.value) return
     selectedResult.value = searchResult
     selected.value = true
 }
@@ -263,38 +336,8 @@ function handleEnterKeyPress() {
     }
 }
 
-function parseProviderLink(link: { url?: string, label?: string }) {
-    const url = (link.url || '').toLowerCase()
-    const label = link.label || ''
-    if ((url.includes('bgm.tv') || url.includes('bangumi.tv')) && url.includes('/subject/')) {
-        const m = url.match(/\/subject\/([^/?]+)/)
-        if (m) return { provider: 'bangumi', providerSeriesId: m[1], label, url: link.url || '' }
-    }
-    if (url.includes('e-hentai.org') || url.includes('exhentai.org')) {
-        const m = url.match(/\/g\/([^/]+)\/([^/]+)/)
-        if (m) return { provider: 'ehentai', providerSeriesId: m[1] + ';' + m[2], label, url: link.url || '' }
-    }
-    if (url.includes('anilist.co')) {
-        const m = url.match(/\/(anime|manga)\/(\d+)/)
-        if (m) return { provider: 'anilist', providerSeriesId: m[2], label, url: link.url || '' }
-    }
-    if (url.includes('myanimelist.net')) {
-        const m = url.match(/\/(anime|manga)\/(\d+)/)
-        if (m) return { provider: 'mal', providerSeriesId: m[2], label, url: link.url || '' }
-    }
-    if (url.includes('mangadex.org')) {
-        const m = url.match(/\/title\/([^/?]+)/)
-        if (m) return { provider: 'mangadex', providerSeriesId: m[1], label, url: link.url || '' }
-    }
-    if (url.includes('mangaupdates.com')) {
-        const m = url.match(/\/series\/([^/?]+)/) || url.match(/series\.html\?id=(\d+)/)
-        if (m) return { provider: 'mangaupdates', providerSeriesId: m[1], label, url: link.url || '' }
-    }
-    return null
-}
-
 async function fetchProviderLink() {
-    if (settings.mediaServer == MediaServer.Komga && seriesId.value && settings.linksMatchEnabled) {
+    if (settings.mediaServer == MediaServer.Komga && seriesId.value && linksMatchEnabled.value) {
         try {
             const resp = await fetch(`/api/v1/series/${seriesId.value}`, { credentials: 'include' })
             let allLinks: { label?: string, url?: string }[] = []
@@ -330,7 +373,7 @@ async function fetchProviderLink() {
     }
 }
 
-fetchProviderLink()
+initialize()
 </script>
 
 <style scoped lang="scss">

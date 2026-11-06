@@ -12,5 +12,10 @@ export interface IdentifyRequest {
     seriesId: string,
     provider: string,
     providerSeriesId: string,
-    edition?: string
+}
+
+export interface MetadataJob {
+    id: string,
+    status: 'RUNNING' | 'COMPLETED' | 'FAILED',
+    message: string | null,
 }
