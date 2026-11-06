@@ -12,20 +12,22 @@ const compiled = ts.transpileModule(source, {
 const oldLink = { label: 'Existing', url: 'https://example.org/existing' }
 const newLink = { label: 'EHENTAI', url: 'https://e-hentai.org/g/123/abc/' }
 
-function fixture({ oneshot = false, patchStatus = 204, readStatus = 200, bookCount = 1 } = {}) {
+function fixture({ oneshot = false, patchStatus = 204, patchStatuses = {}, readStatus = 200, bookReadStatus = readStatus, bookCount = 1 } = {}) {
     const series = { id: 's1', oneshot, metadata: { links: [oldLink], title: 'Unchanged', linksLock: true } }
     const book = { id: 'b1', metadata: { links: [oldLink], title: 'Book unchanged', tags: ['keep'], linksLock: false } }
     const calls = []
     const context = { exports: {}, fetch: async (url, init) => {
         calls.push({ url, ...init })
         if (init.method === 'PATCH') {
-            if (patchStatus === 204) {
+            const status = patchStatuses[url.includes('/books/') ? 'book' : 'series'] ?? patchStatus
+            if (status === 204) {
                 Object.assign(url.includes('/books/') ? book.metadata : series.metadata, JSON.parse(init.body))
             }
-            return { ok: patchStatus === 204, status: patchStatus }
+            return { ok: status === 204, status }
         }
+        const status = url.includes('/books?') ? bookReadStatus : readStatus
         return {
-            ok: readStatus === 200, status: readStatus,
+            ok: status === 200, status,
             json: async () => structuredClone(url.includes('/books?') ? { content: Array(bookCount).fill(book) } : series)
         }
     } }
@@ -53,15 +55,23 @@ test('duplicate URL does not PATCH or change the existing label', async () => {
     assert.deepEqual(f.series.metadata.links, [oldLink])
 })
 
-test('One-shot writes book links, not series links', async () => {
+test('One-shot appends to both layers without copying unrelated links or changing metadata', async () => {
     const f = fixture({ oneshot: true })
+    const bookOnly = { label: 'Book only', url: 'https://example.org/book-only' }
+    f.book.metadata.links = [bookOnly]
     assert.equal(await f.add('s1', newLink), true)
-    assert.equal(f.calls[2].url, '/api/v1/books/b1/metadata')
-    assert.deepEqual(f.book.metadata.links, [oldLink, newLink])
+    assert.deepEqual(f.book.metadata.links, [bookOnly, newLink])
     assert.deepEqual(f.book.metadata.tags, ['keep'])
     assert.equal(f.book.metadata.title, 'Book unchanged')
     assert.equal(f.book.metadata.linksLock, false)
-    assert.deepEqual(f.series.metadata.links, [oldLink])
+    assert.deepEqual(f.series.metadata.links, [oldLink, newLink])
+    assert.equal(f.series.metadata.linksLock, true)
+    assert.equal(f.series.metadata.title, 'Unchanged')
+    for (const call of f.calls) {
+        assert.equal(call.credentials, 'include')
+        assert.equal(call.headers?.Authorization, undefined)
+        if (call.method === 'PATCH') assert.deepEqual(Object.keys(JSON.parse(call.body)), ['links'])
+    }
 })
 
 test('successive additions re-read links, including different galleries from the same provider', async () => {
@@ -82,6 +92,71 @@ test('failed metadata read never proceeds to PATCH', async () => {
     const f = fixture({ readStatus: 404 })
     await assert.rejects(f.add('s1', newLink), /404/)
     assert.equal(f.calls.length, 1)
+})
+
+test('One-shot retries fill the missing Series side without duplicating Book links', async () => {
+    const statuses = { series: 500 }
+    const f = fixture({ oneshot: true, patchStatuses: statuses })
+    await assert.rejects(f.add('s1', newLink), /saved to Book.*Series update failed.*Retry.*500/)
+    assert.deepEqual(f.book.metadata.links, [oldLink, newLink])
+    assert.deepEqual(f.series.metadata.links, [oldLink])
+    statuses.series = 204
+    assert.equal(await f.add('s1', newLink), true)
+    assert.deepEqual(f.book.metadata.links, [oldLink, newLink])
+    assert.deepEqual(f.series.metadata.links, [oldLink, newLink])
+    assert.equal(f.calls.filter(c => c.method === 'PATCH' && c.url.includes('/books/')).length, 1)
+})
+
+test('One-shot first-side failure stops before writing the other side', async () => {
+    const f = fixture({ oneshot: true, patchStatuses: { book: 403 } })
+    await assert.rejects(f.add('s1', newLink), /403/)
+    assert.deepEqual(f.book.metadata.links, [oldLink])
+    assert.deepEqual(f.series.metadata.links, [oldLink])
+    assert.equal(f.calls.filter(c => c.method === 'PATCH' && c.url.includes('/series/')).length, 0)
+})
+
+test('One-shot Book read failure does not write either side', async () => {
+    const f = fixture({ oneshot: true, bookReadStatus: 404 })
+    await assert.rejects(f.add('s1', newLink), /404/)
+    assert.equal(f.calls.filter(c => c.method === 'PATCH').length, 0)
+})
+
+for (const existingSide of ['book', 'series']) {
+    test(`One-shot URL already on ${existingSide} is added only to the missing layer`, async () => {
+        const f = fixture({ oneshot: true })
+        const existing = { ...newLink, label: 'Keep my label' }
+        f[existingSide].metadata.links.push(existing)
+        assert.equal(await f.add('s1', newLink), true)
+        assert.equal(f.calls.filter(c => c.method === 'PATCH').length, 1)
+        assert.deepEqual(f[existingSide].metadata.links, [oldLink, existing])
+        assert.deepEqual(f[existingSide === 'book' ? 'series' : 'book'].metadata.links, [oldLink, newLink])
+    })
+}
+
+test('One-shot duplicate on both layers makes no writes and preserves both labels', async () => {
+    const f = fixture({ oneshot: true })
+    f.book.metadata.links = [{ ...newLink, label: 'Book label' }]
+    f.series.metadata.links = [{ ...newLink, label: 'Series label' }]
+    assert.equal(await f.add('s1', newLink), false)
+    assert.equal(f.calls.filter(c => c.method === 'PATCH').length, 0)
+    assert.equal(f.book.metadata.links[0].label, 'Book label')
+    assert.equal(f.series.metadata.links[0].label, 'Series label')
+})
+
+test('One-shot repeated additions preserve both layers and distinct galleries of the same provider', async () => {
+    const f = fixture({ oneshot: true })
+    const another = { ...newLink, url: 'https://e-hentai.org/g/456/def/' }
+    await f.add('s1', newLink)
+    await f.add('s1', another)
+    assert.deepEqual(f.series.metadata.links, [oldLink, newLink, another])
+    assert.deepEqual(f.book.metadata.links, [oldLink, newLink, another])
+    assert.equal(await f.add('s1', another), false)
+})
+
+test('One-shot with no book fails before any write', async () => {
+    const f = fixture({ oneshot: true, bookCount: 0 })
+    await assert.rejects(f.add('s1', newLink), /single book/)
+    assert.equal(f.calls.filter(c => c.method === 'PATCH').length, 0)
 })
 
 test('ambiguous One-shot refuses to choose a book arbitrarily', async () => {

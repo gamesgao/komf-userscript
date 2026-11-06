@@ -13,23 +13,37 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 }
 
 export async function addSeriesLink(seriesId: string, link: WebLink): Promise<boolean> {
-    let target = `series/${encodeURIComponent(seriesId)}`
-    const series = await (await request(target)).json()
-    let metadata = series.metadata
+    const seriesPath = `series/${encodeURIComponent(seriesId)}`
+    const series = await (await request(seriesPath)).json()
+    const targets: { path: string, label: string, links: WebLink[] }[] = [
+        { path: seriesPath, label: 'Series', links: series.metadata.links ?? [] }
+    ]
     if (series.oneshot) {
-        const books = await (await request(`${target}/books?unpaged=true`)).json()
+        const books = await (await request(`${seriesPath}/books?unpaged=true`)).json()
         if (books.content.length !== 1) throw new Error('Could not resolve the single book for this One-shot.')
         const book = books.content[0]
-        target = `books/${encodeURIComponent(book.id)}`
-        metadata = book.metadata
+        // Resolve both layers before writing. Each keeps its own links and labels.
+        targets.unshift({ path: `books/${encodeURIComponent(book.id)}`, label: 'Book', links: book.metadata.links ?? [] })
     }
 
-    const links: WebLink[] = metadata.links ?? []
-    if (links.some(existing => existing.url === link.url)) return false
-    await request(`${target}/metadata`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ links: [...links, link] })
-    })
-    return true
+    const saved: string[] = []
+    for (const target of targets) {
+        const links: WebLink[] = target.links
+        if (links.some(existing => existing.url === link.url)) continue
+        try {
+            await request(`${target.path}/metadata`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ links: [...links, link] })
+            })
+        } catch (error) {
+            if (saved.length) {
+                const detail = error instanceof Error ? error.message : String(error)
+                throw new Error(`Link saved to ${saved.join(' and ')}, but ${target.label} update failed. Retry to finish. ${detail}`)
+            }
+            throw error
+        }
+        saved.push(target.label)
+    }
+    return saved.length > 0
 }
