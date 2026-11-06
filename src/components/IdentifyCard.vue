@@ -38,6 +38,7 @@
             <q-btn v-if="allowLinkAdd" flat dense icon="mdi-plus" style="flex-shrink: 0"
                    aria-label="Add link only" :loading="addingLink" :disable="disabled || !sourceUrl"
                    @click.stop="emit('on-add-link', item)">
+              <template #loading><action-feedback :success="linkAdded" label="Link saved" /></template>
               <q-tooltip>Add link only</q-tooltip>
             </q-btn>
           </div>
@@ -53,6 +54,7 @@ import type { SearchResult } from '@/types/metadata'
 import type { PropType } from 'vue'
 import { computed } from 'vue'
 import { getSourceUrl } from '@/providerLinks'
+import ActionFeedback from '@/components/ActionFeedback.vue'
 
 const emit = defineEmits(['on-select-result', 'on-add-link'])
 const props = defineProps({
@@ -66,6 +68,7 @@ const props = defineProps({
     },
     allowLinkAdd: Boolean,
     addingLink: Boolean,
+    linkAdded: Boolean,
     disabled: Boolean,
     width: {
         type: [String],

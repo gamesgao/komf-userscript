@@ -657,3 +657,31 @@ html.dark [id^='q-portal--'] .q-dialog-plugin .q-card:not(.identify-card) {
 [id^='q-portal--'] .identify-dialog .q-spinner-mat .path {
   animation: q-mat-dash 1.5s ease-in-out infinite !important;
 }
+
+/* Identify completion: enable ONLY an opacity exit on its wrapper/backdrop.
+   Do not restore transform transitions on the viewport-pinned card. */
+[id^='q-portal--'] .komf-identify-modal .q-transition--komf-identify-fade-leave-active,
+[id^='q-portal--'] .komf-identify-modal .q-dialog__backdrop.q-transition--fade-leave-active {
+  transition: opacity 280ms ease-out !important;
+}
+[id^='q-portal--'] .komf-identify-modal .q-transition--komf-identify-fade-leave-from {
+  opacity: 1;
+}
+[id^='q-portal--'] .komf-identify-modal .q-transition--komf-identify-fade-leave-to {
+  opacity: 0 !important;
+}
+[id^='q-portal--'] .identify-dialog .q-btn.komf-confirm-success {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  opacity: 1 !important;
+}
+[data-komf-theme='dark'] [id^='q-portal--'] .identify-dialog .q-btn.komf-confirm-success {
+  background: #143b28 !important;
+  color: #4ade80 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  [id^='q-portal--'] .komf-identify-modal .q-transition--komf-identify-fade-leave-active,
+  [id^='q-portal--'] .komf-identify-modal .q-dialog__backdrop.q-transition--fade-leave-active {
+    transition: none !important;
+  }
+}

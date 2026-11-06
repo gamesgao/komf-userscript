@@ -1,5 +1,7 @@
 <template>
-  <q-dialog ref="dialogRef" @hide="onDialogHide" :persistent="loading" @keyup.enter="handleEnterKeyPress">
+  <q-dialog ref="dialogRef" class="komf-identify-modal" @hide="onDialogHide" :persistent="loading"
+            transition-hide="komf-identify-fade" :transition-duration="dialogTransitionDuration"
+            @keyup.enter="handleEnterKeyPress">
     <q-card class="q-dialog-plugin identify-dialog" :style="cardStyle">
       <q-card-section>
 
@@ -15,7 +17,7 @@
         <q-card flat v-if="search">
 
           <q-toolbar class="lt-sm" id="identify_toolbar">
-            <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel" />
+            <q-btn flat icon="mdi-close" :disable="identifySucceeded || (loading && !jobId)" @click="onDialogCancel" />
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
             <q-btn color="secondary" :loading="loading" :disable="loading || form.title === ''" @click="searchSeries">
@@ -27,13 +29,11 @@
           <div class="col">
             <q-input class="q-pt-sm q-pb-sm" v-model="form.title" label="title" :disable="loading" filled />
 
-            <div v-if="linksMatchEnabled && linkHits.length" class="text-caption q-pt-sm">
-              Komf still prioritizes existing links. Disable linksMatchEnabled in Processing settings to force a new match.
-            </div>
+
           </div>
 
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm">
-            <q-btn :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
+            <q-btn :disable="identifySucceeded || (loading && !jobId)" @click="onDialogCancel">Cancel</q-btn>
             <q-btn :loading="loading" :disable="loading || form.title === ''" color="secondary" @click="searchSeries">
               Search
             </q-btn>
@@ -42,10 +42,13 @@
 
         <q-card flat v-if="!search && !results && linkHits.length > 0">
           <q-toolbar class="lt-sm">
-            <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel" />
+            <q-btn flat icon="mdi-close" :disable="identifySucceeded || (loading && !jobId)" @click="onDialogCancel" />
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" :loading="loading && !addingLink" @click="dialogConfirm" class="komf-identify-confirm" :class="{ 'komf-confirm-success': identifySucceeded }">
+              <template #loading><action-feedback :success="identifySucceeded" label="Metadata updated" /></template>
+              {{ jobId ? 'Check status' : 'Confirm' }}
+            </q-btn>
           </q-toolbar>
           <div class="q-pa-md">
             <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search by title</q-btn>
@@ -85,22 +88,28 @@
             </q-list>
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm">
-            <q-btn :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn :disable="identifySucceeded || (loading && !jobId)" @click="onDialogCancel">Cancel</q-btn>
+            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" :loading="loading && !addingLink" @click="dialogConfirm" class="komf-identify-confirm" :class="{ 'komf-confirm-success': identifySucceeded }">
+              <template #loading><action-feedback :success="identifySucceeded" label="Metadata updated" /></template>
+              {{ jobId ? 'Check status' : 'Confirm' }}
+            </q-btn>
           </q-card-actions>
         </q-card>
 
         <q-card flat v-if="results">
 
           <q-toolbar class="lt-sm">
-            <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel">
+            <q-btn flat icon="mdi-close" :disable="identifySucceeded || (loading && !jobId)" @click="onDialogCancel">
             </q-btn>
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="!selected || loading" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn color="secondary" :disable="!selected || loading" :loading="loading && !addingLink" @click="dialogConfirm" class="komf-identify-confirm" :class="{ 'komf-confirm-success': identifySucceeded }">
+              <template #loading><action-feedback :success="identifySucceeded" label="Metadata updated" /></template>
+              {{ jobId ? 'Check status' : 'Confirm' }}
+            </q-btn>
           </q-toolbar>
 
-          <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search again</q-btn>
+
 
           <div v-if="searchResults.length === 0" class="q-pa-md" role="status">
             No matches found. Try another title or check the enabled providers.
@@ -114,12 +123,16 @@
               <identify-card :item="item" :selected="isResultSelected(item)"
                              :allow-link-add="settings.mediaServer === MediaServer.Komga"
                              :adding-link="addingLink === item" :disabled="loading || !!jobId"
+                             :link-added="addedLink === item"
                              @on-select-result="selectResult" @on-add-link="addLinkOnly" />
             </div>
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm" v-if="results">
-            <q-btn flat :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn color="secondary" :disable="!selected || loading" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn flat :disable="identifySucceeded || (loading && !jobId)" @click="onDialogCancel">Cancel</q-btn>
+            <q-btn color="secondary" :disable="!selected || loading" :loading="loading && !addingLink" @click="dialogConfirm" class="komf-identify-confirm" :class="{ 'komf-confirm-success': identifySucceeded }">
+              <template #loading><action-feedback :success="identifySucceeded" label="Metadata updated" /></template>
+              {{ jobId ? 'Check status' : 'Confirm' }}
+            </q-btn>
           </q-card-actions>
         </q-card>
       </q-card-section>
@@ -131,6 +144,7 @@
 import { computed, inject, onBeforeUnmount, reactive, ref } from 'vue'
 import type { IdentifyRequest, SearchResult } from '@/types/metadata'
 import IdentifyCard from '@/components/IdentifyCard.vue'
+import ActionFeedback from '@/components/ActionFeedback.vue'
 import type KomfMetadataService from '../services/komf-metadata.service'
 import { komfConfigKey, komfMetadataKey } from '@/injection-keys'
 import { useSettingsStore } from '@/stores/settings'
@@ -177,7 +191,10 @@ const cardStyle = computed(() => {
 const search = ref(true)
 const results = ref(false)
 const loading = ref(false)
+const identifySucceeded = ref(false)
+const dialogTransitionDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280
 const addingLink = ref<SearchResult | null>(null)
+const addedLink = ref<SearchResult | null>(null)
 const errorMessage = ref('')
 const initialized = ref(false)
 const linksMatchEnabled = ref(false)
@@ -257,8 +274,9 @@ async function dialogConfirm() {
             const job = await metadataService.getJob(jobId.value)
             if (disposed) return
             if (job.status === 'COMPLETED') {
-                $q.notify({ message: 'Metadata updated', color: 'positive', timeout: 3000 })
-                onDialogOK()
+                identifySucceeded.value = true
+                await new Promise(resolve => setTimeout(resolve, 650))
+                if (!disposed) onDialogOK()
                 return
             }
             if (job.status === 'FAILED') {
@@ -271,7 +289,7 @@ async function dialogConfirm() {
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : String(e)
     } finally {
-        loading.value = false
+        if (!identifySucceeded.value) loading.value = false
     }
 }
 
@@ -310,14 +328,17 @@ async function addLinkOnly(item: SearchResult) {
     addingLink.value = item
     errorMessage.value = ''
     try {
-        const added = await addSeriesLink(seriesId.value, {
+        await addSeriesLink(seriesId.value, {
             label: item.provider,
             url
         })
-        $q.notify({ message: added ? 'Link added to Komga' : 'Link already exists in Komga', color: 'positive', timeout: 3000 })
+        if (disposed) return
+        addedLink.value = item
+        await new Promise(resolve => setTimeout(resolve, 650))
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : String(e)
     } finally {
+        addedLink.value = null
         addingLink.value = null
         loading.value = false
     }
