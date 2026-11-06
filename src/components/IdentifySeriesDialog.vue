@@ -11,7 +11,6 @@
         </div>
 
         <div v-if="errorMessage" class="text-negative q-pb-md" role="alert">{{ errorMessage }}</div>
-        <div v-if="jobId" class="text-caption q-pb-md">Task {{ jobId }}. Closing this dialog does not cancel the server task.</div>
 
         <q-card flat v-if="search">
 
