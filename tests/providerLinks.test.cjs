@@ -13,7 +13,60 @@ const compiled = ts.transpileModule(source, {
 const context = { exports: {}, URL }
 runInNewContext(compiled.outputText, context)
 const { parseProviderLink } = context.exports
-const { getSourceUrl } = context.exports
+const { getSourceUrl, getLinkToSave, normalizeStoredLink } = context.exports
+
+const muResult = {
+    provider: 'MANGA_UPDATES', resultId: '2034633929',
+    url: 'https://www.mangaupdates.com/series/0xnd9l5/aibuka-kari'
+}
+const muSaved = 'https://www.mangaupdates.com/series.html?id=2034633929'
+
+test('Link-only stores the authoritative MU API ID in a working compatibility URL', () => {
+    assert.equal(getLinkToSave(muResult), muSaved)
+    assert.equal(getSourceUrl(muResult.url), muResult.url, 'provider navigation stays unchanged')
+    assert.equal(muResult.url, 'https://www.mangaupdates.com/series/0xnd9l5/aibuka-kari')
+    assert.equal(parseProviderLink({ url: muSaved }).providerSeriesId, muResult.resultId)
+})
+
+test('Link-only uses the result ID, not an old decimal website ID or an all-digit base36 slug', () => {
+    assert.equal(getLinkToSave({ ...muResult, resultId: '55099564912', url: 'https://www.mangaupdates.com/series.html?id=33' }),
+        'https://www.mangaupdates.com/series.html?id=55099564912')
+    assert.equal(getLinkToSave({ ...muResult, url: 'https://www.mangaupdates.com/series/123/title' }), muSaved)
+    assert.equal(getLinkToSave({ ...muResult, resultId: '18446744073709551615' }),
+        'https://www.mangaupdates.com/series.html?id=18446744073709551615')
+})
+
+test('Link-only normalizes MangaBaka long and short result URLs to the short form', () => {
+    for (const url of ['https://mangabaka.org/118181', 'https://mangabaka.org/manga/118181/Idol-Club-KARI']) {
+        const result = { provider: 'MANGA_BAKA', resultId: '118181', url }
+        assert.equal(getLinkToSave(result), 'https://mangabaka.org/118181')
+        assert.equal(getSourceUrl(url), url)
+    }
+})
+
+test('other providers, missing URLs and nonnumeric result IDs keep existing behavior', () => {
+    const eh = { provider: 'EHENTAI', resultId: '123;abc', url: 'https://exhentai.org/g/123/abc/' }
+    assert.equal(getLinkToSave(eh), eh.url)
+    for (const url of [undefined, null, '', 'javascript:alert(1)']) assert.equal(getLinkToSave({ ...muResult, url }), undefined)
+    assert.equal(getLinkToSave({ ...muResult, resultId: 'invalid' }), muResult.url)
+})
+
+test('existing equivalent MU URLs normalize for replacement, not a second same-provider link', () => {
+    for (const url of [muResult.url, 'http://mangaupdates.com/series/0XND9L5?x=1', muSaved + '#info']) {
+        assert.equal(normalizeStoredLink(url), muSaved)
+    }
+    assert.equal(normalizeStoredLink('https://www.mangaupdates.com/series/123/title'),
+        `https://www.mangaupdates.com/series.html?id=${parseInt('123', 36)}`)
+    assert.equal(normalizeStoredLink('https://www.mangaupdates.com/series.html?id=33'),
+        'https://www.mangaupdates.com/series.html?id=33', 'legacy IDs must not be guessed')
+})
+
+test('existing MangaBaka aliases normalize; unrelated and malformed URLs stay untouched', () => {
+    assert.equal(normalizeStoredLink('https://mangabaka.org/manga/118181/Idol-Club-KARI'), 'https://mangabaka.org/118181')
+    for (const url of ['https://example.org/series/0xnd9l5', 'https://mangaupdates.com.example.org/series/0xnd9l5', 'not a URL']) {
+        assert.equal(normalizeStoredLink(url), url)
+    }
+})
 
 test('uses the supplied source URL rather than guessing from provider IDs', () => {
     const url = 'https://exhentai.org/g/123/AbC123/'

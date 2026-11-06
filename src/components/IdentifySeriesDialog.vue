@@ -150,7 +150,7 @@ import { komfConfigKey, komfMetadataKey } from '@/injection-keys'
 import { useSettingsStore } from '@/stores/settings'
 import { useDialogPluginComponent, useQuasar } from 'quasar'
 import MediaServer from '@/types/mediaServer'
-import { getSourceUrl, parseProviderLink } from '@/providerLinks'
+import { getLinkToSave, parseProviderLink } from '@/providerLinks'
 import { addSeriesLink } from '@/services/komga-metadata.service'
 
 defineEmits([
@@ -322,7 +322,7 @@ function startSearch() {
 }
 
 async function addLinkOnly(item: SearchResult) {
-    const url = getSourceUrl(item.url)
+    const url = getLinkToSave(item)
     if (loading.value || jobId.value || !url || !seriesId.value) return
     loading.value = true
     addingLink.value = item
@@ -331,7 +331,7 @@ async function addLinkOnly(item: SearchResult) {
         await addSeriesLink(seriesId.value, {
             label: item.provider,
             url
-        })
+        }, item.url ?? undefined)
         if (disposed) return
         addedLink.value = item
         await new Promise(resolve => setTimeout(resolve, 650))

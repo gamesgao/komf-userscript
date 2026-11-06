@@ -9,6 +9,10 @@ const source = readFileSync(join(__dirname, '../src/services/komga-metadata.serv
 const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 })
+const providerContext = { exports: {}, URL }
+runInNewContext(ts.transpileModule(readFileSync(join(__dirname, '../src/providerLinks.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText, providerContext)
 const oldLink = { label: 'Existing', url: 'https://example.org/existing' }
 const newLink = { label: 'EHENTAI', url: 'https://e-hentai.org/g/123/abc/' }
 
@@ -16,7 +20,7 @@ function fixture({ oneshot = false, patchStatus = 204, patchStatuses = {}, readS
     const series = { id: 's1', oneshot, metadata: { links: [oldLink], title: 'Unchanged', linksLock: true } }
     const book = { id: 'b1', metadata: { links: [oldLink], title: 'Book unchanged', tags: ['keep'], linksLock: false } }
     const calls = []
-    const context = { exports: {}, fetch: async (url, init) => {
+    const context = { exports: {}, require: () => providerContext.exports, fetch: async (url, init) => {
         calls.push({ url, ...init })
         if (init.method === 'PATCH') {
             const status = patchStatuses[url.includes('/books/') ? 'book' : 'series'] ?? patchStatus
@@ -34,6 +38,64 @@ function fixture({ oneshot = false, patchStatus = 204, patchStatuses = {}, readS
     runInNewContext(compiled.outputText, context)
     return { add: context.exports.addSeriesLink, calls, series, book }
 }
+
+const muSource = 'https://www.mangaupdates.com/series/0xnd9l5/aibuka-kari'
+const muLink = { label: 'MANGA_UPDATES', url: 'https://www.mangaupdates.com/series.html?id=2034633929' }
+
+test('selected MU webpage alias is replaced in place, keeping its label and other providers', async () => {
+    const f = fixture()
+    f.series.metadata.links = [oldLink, { label: 'My MU label', url: muSource }, newLink]
+    assert.equal(await f.add('s1', muLink, muSource), true)
+    assert.deepEqual(f.series.metadata.links, [oldLink, { ...muLink, label: 'My MU label' }, newLink])
+    assert.equal(await f.add('s1', muLink, muSource), false)
+    assert.equal(f.calls.filter(c => c.method === 'PATCH').length, 1)
+})
+
+test('MU aliases collapse to one compatible link, while distinct MU records stay untouched', async () => {
+    const f = fixture()
+    const other = { label: 'Other MU work', url: 'https://www.mangaupdates.com/series/pb8uwds/one-piece' }
+    f.series.metadata.links = [{ label: 'Keep', url: 'https://mangaupdates.com/series/0xnd9l5#info' }, other, muLink]
+    await f.add('s1', muLink, muSource)
+    assert.deepEqual(f.series.metadata.links, [{ ...muLink, label: 'Keep' }, other])
+})
+
+test('One-shot normalizes each layer with its own label and preserves unrelated fields', async () => {
+    const f = fixture({ oneshot: true })
+    f.book.metadata.links = [{ label: 'Book MU', url: muSource }]
+    f.series.metadata.links = [oldLink, { label: 'Series MU', url: muSource }]
+    await f.add('s1', muLink, muSource)
+    assert.deepEqual(f.book.metadata.links, [{ ...muLink, label: 'Book MU' }])
+    assert.deepEqual(f.series.metadata.links, [oldLink, { ...muLink, label: 'Series MU' }])
+    assert.deepEqual(f.book.metadata.tags, ['keep'])
+    assert.equal(f.series.metadata.title, 'Unchanged')
+    for (const call of f.calls.filter(c => c.method === 'PATCH')) assert.deepEqual(Object.keys(JSON.parse(call.body)), ['links'])
+})
+
+test('MangaBaka long link is replaced rather than duplicated', async () => {
+    const f = fixture()
+    const original = 'https://mangabaka.org/manga/118181/Idol-Club-KARI'
+    f.series.metadata.links = [{ label: 'MangaBaka', url: original }, oldLink]
+    const normalized = { label: 'MANGA_BAKA', url: 'https://mangabaka.org/118181' }
+    await f.add('s1', normalized, original)
+    assert.deepEqual(f.series.metadata.links, [{ ...normalized, label: 'MangaBaka' }, oldLink])
+})
+
+test('an exact legacy source URL can be updated with its known modern search-result ID', async () => {
+    const f = fixture()
+    const legacy = 'https://www.mangaupdates.com/series.html?id=33'
+    const current = { label: 'MANGA_UPDATES', url: 'https://www.mangaupdates.com/series.html?id=55099564912' }
+    f.series.metadata.links = [{ label: 'Old label', url: legacy }]
+    await f.add('s1', current, legacy)
+    assert.deepEqual(f.series.metadata.links, [{ ...current, label: 'Old label' }])
+})
+
+test('unknown legacy IDs are not silently reinterpreted or rewritten', async () => {
+    const f = fixture()
+    const legacy = { label: 'Unresolved old ID', url: 'https://www.mangaupdates.com/series.html?id=33' }
+    f.series.metadata.links = [legacy]
+    await f.add('s1', muLink, muSource)
+    assert.deepEqual(f.series.metadata.links, [legacy, muLink])
+})
 
 test('adds only links, preserves existing metadata and uses page credentials without Komf auth', async () => {
     const f = fixture()

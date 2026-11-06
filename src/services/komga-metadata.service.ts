@@ -1,3 +1,5 @@
+import { normalizeStoredLink } from '@/providerLinks'
+
 interface WebLink {
     label: string,
     url: string,
@@ -12,7 +14,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
     return response
 }
 
-export async function addSeriesLink(seriesId: string, link: WebLink): Promise<boolean> {
+export async function addSeriesLink(seriesId: string, link: WebLink, sourceUrl = link.url): Promise<boolean> {
     const seriesPath = `series/${encodeURIComponent(seriesId)}`
     const series = await (await request(seriesPath)).json()
     const targets: { path: string, label: string, links: WebLink[] }[] = [
@@ -29,12 +31,21 @@ export async function addSeriesLink(seriesId: string, link: WebLink): Promise<bo
     const saved: string[] = []
     for (const target of targets) {
         const links: WebLink[] = target.links
-        if (links.some(existing => existing.url === link.url)) continue
+        let matched = false
+        const updated = links.flatMap(existing => {
+            if (existing.url !== sourceUrl && normalizeStoredLink(existing.url) !== link.url) return [existing]
+            if (matched) return []
+            matched = true
+            // Replace the selected work's old URL in place, retaining its label.
+            return [{ ...existing, url: link.url }]
+        })
+        if (!matched) updated.push(link)
+        if (links.length === updated.length && links.every((old, i) => old.url === updated[i].url)) continue
         try {
             await request(`${target.path}/metadata`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ links: [...links, link] })
+                body: JSON.stringify({ links: updated })
             })
         } catch (error) {
             if (saved.length) {

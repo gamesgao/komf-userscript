@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Komf (gamesgao fixes)
 // @namespace    https://github.com/gamesgao/komf-userscript
-// @version      0.13.13
+// @version      0.13.14
 // @description  Komf userscript
 // @author       snd-r
 // @include      http://localhost:25600/*
