@@ -30,7 +30,12 @@
             <q-tooltip :delay="500">{{ item.title }}</q-tooltip>
           </div>
 
-          <div class="text-center text-weight-bold ellipsis">{{ providerName }}</div>
+          <div class="text-center text-weight-bold ellipsis">
+            <q-btn v-if="sourceUrl" flat dense no-caps :href="sourceUrl" target="_blank" rel="noopener noreferrer" @click.stop>
+              {{ providerName }}
+            </q-btn>
+            <span v-else>{{ providerName }}</span>
+          </div>
         </q-card-section>
       </div>
     </q-card-section>
@@ -42,6 +47,7 @@
 import type { SearchResult } from '@/types/metadata'
 import type { PropType } from 'vue'
 import { computed } from 'vue'
+import { getSourceUrl } from '@/providerLinks'
 
 const emit = defineEmits(['on-select-result'])
 const props = defineProps({
@@ -59,6 +65,7 @@ const props = defineProps({
         default: '160px'
     }
 })
+const sourceUrl = computed(() => getSourceUrl(props.item.url))
 const providerName = computed(() => {
     return props.item.provider.toLowerCase().split('_')
         .map(token => token.charAt(0).toUpperCase() + token.slice(1))

@@ -10,10 +10,6 @@
           Identify
         </div>
 
-        <div v-if="loading" class="q-pb-md" role="status" aria-live="polite">
-          <div class="q-pb-sm">{{ loadingMessage }}</div>
-          <q-linear-progress indeterminate color="secondary" />
-        </div>
         <div v-if="errorMessage" class="text-negative q-pb-md" role="alert">{{ errorMessage }}</div>
         <div v-if="jobId" class="text-caption q-pb-md">Task {{ jobId }}. Closing this dialog does not cancel the server task.</div>
 
@@ -23,8 +19,8 @@
             <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel" />
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="loading || form.title === ''" @click="searchSeries">
-              {{ loading ? 'Please wait…' : 'Search' }}
+            <q-btn color="secondary" :loading="loading" :disable="loading || form.title === ''" @click="searchSeries">
+              Search
             </q-btn>
           </q-toolbar>
 
@@ -39,8 +35,8 @@
 
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm">
             <q-btn :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn :disable="loading || form.title === ''" color="secondary" @click="searchSeries">
-              {{ loading ? 'Please wait…' : 'Search' }}
+            <q-btn :loading="loading" :disable="loading || form.title === ''" color="secondary" @click="searchSeries">
+              Search
             </q-btn>
           </q-card-actions>
         </q-card>
@@ -50,7 +46,7 @@
             <q-btn flat icon="mdi-close" :disable="loading && !jobId" @click="onDialogCancel" />
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-toolbar>
           <div class="q-pa-md">
             <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search by title</q-btn>
@@ -91,7 +87,7 @@
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm">
             <q-btn :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn color="secondary" :disable="loading || (!selectedLink && !aggregateMode)" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-card-actions>
         </q-card>
 
@@ -102,10 +98,13 @@
             </q-btn>
             <q-toolbar-title>Identify</q-toolbar-title>
             <q-space />
-            <q-btn color="secondary" :disable="!selected || loading" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn color="secondary" :disable="!selected || loading" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-toolbar>
 
           <q-btn flat :disable="loading || !!jobId" @click="startSearch">Search again</q-btn>
+          <q-btn v-if="settings.mediaServer === MediaServer.Komga" flat color="secondary"
+                 :loading="addingLink" :disable="!selected || !selectedSourceUrl || loading || !!jobId"
+                 @click="addLinkOnly">Add link only</q-btn>
           <div v-if="searchResults.length === 0" class="q-pa-md" role="status">
             No matches found. Try another title or check the enabled providers.
           </div>
@@ -120,7 +119,7 @@
           </div>
           <q-card-actions align="right" class="gt-xs q-pt-lg q-pb-sm" v-if="results">
             <q-btn flat :disable="loading && !jobId" @click="onDialogCancel">Cancel</q-btn>
-            <q-btn color="secondary" :disable="!selected || loading" @click="dialogConfirm">{{ loading ? 'Please wait…' : jobId ? 'Check status' : 'Confirm' }}</q-btn>
+            <q-btn color="secondary" :disable="!selected || loading" :loading="loading && !addingLink" @click="dialogConfirm">{{ jobId ? 'Check status' : 'Confirm' }}</q-btn>
           </q-card-actions>
         </q-card>
       </q-card-section>
@@ -137,7 +136,8 @@ import { komfConfigKey, komfMetadataKey } from '@/injection-keys'
 import { useSettingsStore } from '@/stores/settings'
 import { useDialogPluginComponent, useQuasar } from 'quasar'
 import MediaServer from '@/types/mediaServer'
-import { parseProviderLink } from '@/providerLinks'
+import { getSourceUrl, parseProviderLink } from '@/providerLinks'
+import { addSeriesLink } from '@/services/komga-metadata.service'
 
 defineEmits([
     ...useDialogPluginComponent.emits
@@ -177,7 +177,7 @@ const cardStyle = computed(() => {
 const search = ref(true)
 const results = ref(false)
 const loading = ref(false)
-const loadingMessage = ref('')
+const addingLink = ref(false)
 const errorMessage = ref('')
 const initialized = ref(false)
 const linksMatchEnabled = ref(false)
@@ -189,6 +189,7 @@ let disposed = false
 onBeforeUnmount(() => { disposed = true })
 const searchResults = ref<SearchResult[]>([])
 const selectedResult = ref<SearchResult>({} as SearchResult)
+const selectedSourceUrl = computed(() => getSourceUrl(selectedResult.value.url))
 const linkHits = ref<{ provider: string, providerSeriesId: string, label: string, url: string }[]>([])
 const selectedLink = ref<{ provider: string, providerSeriesId: string, label: string, url: string } | null>(null)
 const aggregateMode = ref(false)
@@ -227,7 +228,6 @@ async function resolveLibraryId() {
 
 async function initialize() {
     loading.value = true
-    loadingMessage.value = 'Loading settings…'
     errorMessage.value = ''
     try {
         await resolveLibraryId()
@@ -249,7 +249,6 @@ async function initialize() {
 async function dialogConfirm() {
     if (loading.value) return
     loading.value = true
-    loadingMessage.value = 'Updating metadata… Waiting for Komf to finish.'
     errorMessage.value = ''
     try {
         if (!jobId.value) jobId.value = await editMetadata()
@@ -283,7 +282,6 @@ async function searchSeries() {
         if (!initialized.value) return
     }
     loading.value = true
-    loadingMessage.value = 'Searching providers… This may take a moment.'
     errorMessage.value = ''
     try {
         searchResults.value = await metadataService.searchSeries(form.title, libraryId.value, seriesId.value)
@@ -303,6 +301,25 @@ function startSearch() {
     results.value = false
     selected.value = false
     errorMessage.value = ''
+}
+
+async function addLinkOnly() {
+    if (loading.value || jobId.value || !selectedSourceUrl.value || !seriesId.value) return
+    loading.value = true
+    addingLink.value = true
+    errorMessage.value = ''
+    try {
+        const added = await addSeriesLink(seriesId.value, {
+            label: selectedResult.value.provider,
+            url: selectedSourceUrl.value
+        })
+        $q.notify({ message: added ? 'Link added to Komga' : 'Link already exists in Komga', color: 'positive', timeout: 3000 })
+    } catch (e) {
+        errorMessage.value = e instanceof Error ? e.message : String(e)
+    } finally {
+        addingLink.value = false
+        loading.value = false
+    }
 }
 
 async function editMetadata() {

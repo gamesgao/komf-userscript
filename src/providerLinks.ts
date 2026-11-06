@@ -1,5 +1,13 @@
 /// <reference lib="es2020.bigint" />
 
+export function getSourceUrl(url?: string | null): string | undefined {
+    if (!url) return
+    try {
+        const parsed = new URL(url)
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url
+    } catch (_e) { /* no usable source URL */ }
+}
+
 export function parseProviderLink(link: { url?: string, label?: string }) {
     const url = link.url || ''
     const lowerUrl = url.toLowerCase()

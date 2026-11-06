@@ -10,9 +10,22 @@ const source = readFileSync(join(__dirname, '../src/providerLinks.ts'), 'utf8')
 const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 })
-const context = { exports: {} }
+const context = { exports: {}, URL }
 runInNewContext(compiled.outputText, context)
 const { parseProviderLink } = context.exports
+const { getSourceUrl } = context.exports
+
+test('uses the supplied source URL rather than guessing from provider IDs', () => {
+    const url = 'https://exhentai.org/g/123/AbC123/'
+    assert.equal(getSourceUrl(url), url)
+    assert.equal(getSourceUrl('http://example.org/source'), 'http://example.org/source')
+})
+
+test('missing, malformed and non-web URLs have no link action', () => {
+    for (const url of [undefined, null, '', 'not a URL', '/relative', 'javascript:alert(1)', 'data:text/html,test']) {
+        assert.equal(getSourceUrl(url), undefined)
+    }
+})
 
 for (const [url, provider, id] of [
     ['https://bgm.tv/subject/123', 'BANGUMI', '123'],

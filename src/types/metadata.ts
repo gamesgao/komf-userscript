@@ -1,4 +1,5 @@
 export interface SearchResult {
+    url?: string | null,
     imageUrl: string,
     title: string,
     provider: string

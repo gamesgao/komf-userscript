@@ -649,3 +649,11 @@ html.dark [id^='q-portal--'] .q-dialog-plugin .q-card:not(.identify-card) {
   animation: none !important;
   transition: none !important;
 }
+
+/* Keep dialogs stationary, but let Identify's button spinners animate. */
+[id^='q-portal--'] .identify-dialog .q-spinner-mat {
+  animation: q-spin 2s linear infinite !important;
+}
+[id^='q-portal--'] .identify-dialog .q-spinner-mat .path {
+  animation: q-mat-dash 1.5s ease-in-out infinite !important;
+}
